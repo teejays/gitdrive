@@ -296,6 +296,10 @@ impl GitCli {
         let output = Command::new("git")
             .args(args)
             .current_dir(&self.repo_path)
+            // Prevent git from opening an editor (e.g. during rebase --continue
+            // or merge commits). gitdrive runs unattended.
+            .env("GIT_EDITOR", "true")
+            .env("GIT_SEQUENCE_EDITOR", "true")
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true)
