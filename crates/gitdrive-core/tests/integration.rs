@@ -46,6 +46,8 @@ async fn clone_to(remote_path: &Path, parent: &Path, name: &str) -> PathBuf {
     let out = tokio::process::Command::new("git")
         .args([
             "clone",
+            "--branch",
+            "main",
             remote_path.to_str().unwrap(),
             clone_path.to_str().unwrap(),
         ])
