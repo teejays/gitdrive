@@ -8,21 +8,14 @@ use crate::git::GitCli;
 /// Common binary file extensions that should always be tracked by LFS.
 const DEFAULT_LFS_EXTENSIONS: &[&str] = &[
     // Images
-    "png", "jpg", "jpeg", "gif", "bmp", "tiff", "tif", "webp", "ico", "heic", "heif", "raw",
-    "cr2", "nef", "arw",
-    // Video
-    "mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v",
-    // Audio
-    "mp3", "wav", "flac", "aac", "ogg", "m4a", "wma",
-    // Archives
-    "zip", "tar", "gz", "bz2", "7z", "rar", "xz", "zst",
-    // Documents
-    "pdf", "psd", "ai", "sketch", "fig", "xd",
-    // Binaries
-    "exe", "dll", "dylib", "so", "app", "dmg", "pkg", "msi",
-    // Fonts
-    "ttf", "otf", "woff", "woff2", "eot",
-    // Data
+    "png", "jpg", "jpeg", "gif", "bmp", "tiff", "tif", "webp", "ico", "heic", "heif", "raw", "cr2",
+    "nef", "arw", // Video
+    "mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", // Audio
+    "mp3", "wav", "flac", "aac", "ogg", "m4a", "wma", // Archives
+    "zip", "tar", "gz", "bz2", "7z", "rar", "xz", "zst", // Documents
+    "pdf", "psd", "ai", "sketch", "fig", "xd", // Binaries
+    "exe", "dll", "dylib", "so", "app", "dmg", "pkg", "msi", // Fonts
+    "ttf", "otf", "woff", "woff2", "eot", // Data
     "sqlite", "db",
 ];
 
@@ -69,9 +62,7 @@ impl LfsManager {
 
         for ext in DEFAULT_LFS_EXTENSIONS {
             if !existing_extensions.contains(*ext) {
-                additions.push(format!(
-                    "*.{ext} filter=lfs diff=lfs merge=lfs -text"
-                ));
+                additions.push(format!("*.{ext} filter=lfs diff=lfs merge=lfs -text"));
             }
         }
 
@@ -100,9 +91,7 @@ impl LfsManager {
         );
 
         // Stage .gitattributes
-        self.git
-            .add(&[gitattributes_path.as_path()])
-            .await?;
+        self.git.add(&[gitattributes_path.as_path()]).await?;
 
         Ok(())
     }
@@ -162,11 +151,7 @@ impl LfsManager {
         let mut tracked = Vec::new();
         for ext in &new_extensions {
             let pattern = format!("*.{ext}");
-            match self
-                .git
-                .run_checked(&["lfs", "track", &pattern])
-                .await
-            {
+            match self.git.run_checked(&["lfs", "track", &pattern]).await {
                 Ok(()) => {
                     info!(ext = %ext, "auto-tracked new LFS extension");
                     tracked.push(ext.clone());
@@ -179,9 +164,7 @@ impl LfsManager {
 
         // Stage the updated .gitattributes
         if !tracked.is_empty() {
-            self.git
-                .add(&[gitattributes_path.as_path()])
-                .await?;
+            self.git.add(&[gitattributes_path.as_path()]).await?;
         }
 
         Ok(tracked)

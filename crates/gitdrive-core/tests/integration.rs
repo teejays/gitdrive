@@ -44,11 +44,19 @@ async fn setup_repo_pair() -> (TempDir, PathBuf, PathBuf) {
 async fn clone_to(remote_path: &Path, parent: &Path, name: &str) -> PathBuf {
     let clone_path = parent.join(name);
     let out = tokio::process::Command::new("git")
-        .args(["clone", remote_path.to_str().unwrap(), clone_path.to_str().unwrap()])
+        .args([
+            "clone",
+            remote_path.to_str().unwrap(),
+            clone_path.to_str().unwrap(),
+        ])
         .output()
         .await
         .unwrap();
-    assert!(out.status.success(), "clone failed: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "clone failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     clone_path
 }
 
@@ -127,7 +135,10 @@ async fn test_pull_remote_changes() {
 
     // Verify file arrived
     assert!(local.join("from_m2.txt").exists());
-    assert_eq!(std::fs::read_to_string(local.join("from_m2.txt")).unwrap(), "hello from m2");
+    assert_eq!(
+        std::fs::read_to_string(local.join("from_m2.txt")).unwrap(),
+        "hello from m2"
+    );
 }
 
 #[tokio::test]
@@ -275,7 +286,10 @@ async fn test_conflict_detection() {
     let event = resolver.detect_conflicts().await.unwrap();
     assert!(event.is_some());
     let event = event.unwrap();
-    assert!(event.conflicted_files.iter().any(|f| f.contains("shared.txt")));
+    assert!(event
+        .conflicted_files
+        .iter()
+        .any(|f| f.contains("shared.txt")));
 
     // Abort to clean up
     resolver.abort_rebase().await.unwrap();
@@ -308,7 +322,10 @@ async fn test_conflict_resolve_keep_mine() {
 
     let resolver = ConflictResolver::new(local_git.clone());
     let event = resolver.detect_conflicts().await.unwrap().unwrap();
-    resolver.resolve_keep_mine(&event.conflicted_files).await.unwrap();
+    resolver
+        .resolve_keep_mine(&event.conflicted_files)
+        .await
+        .unwrap();
 
     let content = std::fs::read_to_string(local.join("file.txt")).unwrap();
     assert_eq!(content, "mine");
@@ -340,7 +357,10 @@ async fn test_conflict_resolve_keep_theirs() {
 
     let resolver = ConflictResolver::new(local_git.clone());
     let event = resolver.detect_conflicts().await.unwrap().unwrap();
-    resolver.resolve_keep_theirs(&event.conflicted_files).await.unwrap();
+    resolver
+        .resolve_keep_theirs(&event.conflicted_files)
+        .await
+        .unwrap();
 
     let content = std::fs::read_to_string(local.join("file.txt")).unwrap();
     assert_eq!(content, "theirs");
@@ -449,11 +469,7 @@ async fn test_lfs_auto_track_skips_small_files() {
 async fn test_sync_engine_push_pipeline() {
     let (_dir, _remote, local) = setup_repo_pair().await;
 
-    let config = Config::new(
-        local.clone(),
-        "unused".into(),
-        "main".into(),
-    );
+    let config = Config::new(local.clone(), "unused".into(), "main".into());
 
     let (conflict_tx, _conflict_rx) = mpsc::channel::<ConflictEvent>(8);
     let (_resolution_tx, resolution_rx) = mpsc::channel::<ConflictResolution>(8);
@@ -466,11 +482,7 @@ async fn test_sync_engine_push_pipeline() {
     // Start engine first, then create files so FSEvents fires
     let local_clone = local.clone();
     let engine_handle = tokio::spawn(async move {
-        tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            engine.run(watcher),
-        )
-        .await
+        tokio::time::timeout(std::time::Duration::from_secs(10), engine.run(watcher)).await
     });
 
     // Wait for watcher to be ready, then create files
@@ -491,7 +503,10 @@ async fn test_sync_engine_push_pipeline() {
         .await
         .unwrap();
     let log = String::from_utf8_lossy(&log_out.stdout);
-    assert!(log.contains("gitdrive: auto-sync"), "expected auto-sync commit in log:\n{log}");
+    assert!(
+        log.contains("gitdrive: auto-sync"),
+        "expected auto-sync commit in log:\n{log}"
+    );
 }
 
 #[tokio::test]

@@ -20,7 +20,10 @@ fn default_repo_path() -> PathBuf {
 const GITHUB_REPO_NAME: &str = "gitdrive";
 
 #[derive(Parser)]
-#[command(name = "gitdrive", about = "Dropbox-like file sync backed by Git + LFS")]
+#[command(
+    name = "gitdrive",
+    about = "Dropbox-like file sync backed by Git + LFS"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -109,10 +112,7 @@ async fn detect_github_user() -> Option<String> {
     }
 }
 
-async fn cmd_init(
-    user: Option<String>,
-    branch: String,
-) -> gitdrive_core::error::Result<()> {
+async fn cmd_init(user: Option<String>, branch: String) -> gitdrive_core::error::Result<()> {
     // Resolve GitHub username
     let username = match user {
         Some(u) => u,
@@ -183,10 +183,7 @@ async fn cmd_watch(config_path: Option<PathBuf>) -> gitdrive_core::error::Result
 
     tokio::spawn(async move {
         while let Some(event) = conflict_notify_rx.recv().await {
-            warn!(
-                "CONFLICT in: {}",
-                event.conflicted_files.join(", ")
-            );
+            warn!("CONFLICT in: {}", event.conflicted_files.join(", "));
             eprintln!("\n--- MERGE CONFLICT ---");
             for f in &event.conflicted_files {
                 eprintln!("  - {f}");

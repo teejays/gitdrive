@@ -495,7 +495,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let git = GitCli::new(dir.path().to_path_buf());
         git.init().await.unwrap();
-        git.add_remote("https://example.com/repo.git").await.unwrap();
+        git.add_remote("https://example.com/repo.git")
+            .await
+            .unwrap();
 
         let out = git.run(&["remote", "-v"]).await.unwrap();
         assert!(out.stdout.contains("origin"));
@@ -544,12 +546,13 @@ mod tests {
         std::fs::write(dir.path().join("app.log"), "log data").unwrap();
         std::fs::write(dir.path().join("app.txt"), "text data").unwrap();
 
-        let ignored = git.check_ignore(&[
-            dir.path().join("app.log"),
-            dir.path().join("app.txt"),
-        ]).await.unwrap();
+        let ignored = git
+            .check_ignore(&[dir.path().join("app.log"), dir.path().join("app.txt")])
+            .await
+            .unwrap();
 
-        let ignored_names: Vec<String> = ignored.iter()
+        let ignored_names: Vec<String> = ignored
+            .iter()
             .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
             .collect();
         assert!(ignored_names.contains(&"app.log".to_string()));

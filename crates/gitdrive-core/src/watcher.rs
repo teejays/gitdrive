@@ -35,7 +35,8 @@ impl FileWatcher {
 
         // Pre-compute the .git directory path. Canonicalize to handle symlinks
         // (e.g. /tmp -> /private/tmp on macOS) so starts_with() matches correctly.
-        let git_dir = watch_path.join(".git")
+        let git_dir = watch_path
+            .join(".git")
             .canonicalize()
             .unwrap_or_else(|_| watch_path.join(".git"));
 
@@ -143,7 +144,10 @@ mod tests {
     fn test_is_git_internal() {
         let git_dir = PathBuf::from("/repo/.git");
         assert!(is_git_internal(Path::new("/repo/.git/index"), &git_dir));
-        assert!(is_git_internal(Path::new("/repo/.git/objects/abc"), &git_dir));
+        assert!(is_git_internal(
+            Path::new("/repo/.git/objects/abc"),
+            &git_dir
+        ));
         assert!(!is_git_internal(Path::new("/repo/src/main.rs"), &git_dir));
         assert!(!is_git_internal(Path::new("/repo/.gitignore"), &git_dir));
     }
@@ -162,13 +166,10 @@ mod tests {
         // Create a file
         std::fs::write(dir.path().join("test.txt"), "hello").unwrap();
 
-        let batch = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            watcher.next_batch(),
-        )
-        .await
-        .expect("timeout waiting for watcher")
-        .expect("watcher closed");
+        let batch = tokio::time::timeout(std::time::Duration::from_secs(5), watcher.next_batch())
+            .await
+            .expect("timeout waiting for watcher")
+            .expect("watcher closed");
 
         let names: Vec<String> = batch
             .iter()
@@ -202,9 +203,10 @@ mod tests {
                 }
                 _ => break,
             }
-            if all_paths.iter().any(|p| {
-                p.file_name().map(|f| f == "visible.txt").unwrap_or(false)
-            }) {
+            if all_paths
+                .iter()
+                .any(|p| p.file_name().map(|f| f == "visible.txt").unwrap_or(false))
+            {
                 break;
             }
         }

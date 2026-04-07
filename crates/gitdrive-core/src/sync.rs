@@ -63,8 +63,7 @@ impl SyncEngine {
 
     /// Main sync loop. Runs until the watcher channel closes or a fatal error.
     pub async fn run(&mut self, mut watcher: FileWatcher) -> Result<()> {
-        let pull_interval =
-            tokio::time::Duration::from_secs(self.config.pull_interval_secs);
+        let pull_interval = tokio::time::Duration::from_secs(self.config.pull_interval_secs);
         let mut pull_timer = tokio::time::interval(pull_interval);
         pull_timer.tick().await;
 
@@ -187,7 +186,10 @@ impl SyncEngine {
         // git command instead of fetch + 3 separate rev-parse/merge-base calls.
         self.git.fetch().await?;
 
-        let out = self.git.run(&["rev-list", "--left-right", "--count", "HEAD...@{u}"]).await?;
+        let out = self
+            .git
+            .run(&["rev-list", "--left-right", "--count", "HEAD...@{u}"])
+            .await?;
         if out.exit_code != 0 {
             // No upstream configured or other issue — skip
             return Ok(());

@@ -90,8 +90,7 @@ impl Config {
         let contents = std::fs::read_to_string(path).map_err(|e| {
             GitDriveError::Config(format!("failed to read {}: {e}", path.display()))
         })?;
-        toml::from_str(&contents)
-            .map_err(|e| GitDriveError::Config(format!("invalid config: {e}")))
+        toml::from_str(&contents).map_err(|e| GitDriveError::Config(format!("invalid config: {e}")))
     }
 
     /// Save config to a TOML file
@@ -112,7 +111,11 @@ mod tests {
 
     #[test]
     fn test_config_new_defaults() {
-        let config = Config::new("/tmp/test".into(), "git@github.com:user/repo.git".into(), "main".into());
+        let config = Config::new(
+            "/tmp/test".into(),
+            "git@github.com:user/repo.git".into(),
+            "main".into(),
+        );
         assert_eq!(config.repo_path, PathBuf::from("/tmp/test"));
         assert_eq!(config.remote_url, "git@github.com:user/repo.git");
         assert_eq!(config.branch, "main");
@@ -128,7 +131,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config_path = dir.path().join("config.toml");
 
-        let config = Config::new("/tmp/test".into(), "git@github.com:user/repo.git".into(), "main".into());
+        let config = Config::new(
+            "/tmp/test".into(),
+            "git@github.com:user/repo.git".into(),
+            "main".into(),
+        );
         config.save(&config_path).unwrap();
 
         let loaded = Config::load(&config_path).unwrap();
@@ -137,7 +144,10 @@ mod tests {
         assert_eq!(loaded.branch, config.branch);
         assert_eq!(loaded.pull_interval_secs, config.pull_interval_secs);
         assert_eq!(loaded.debounce_ms, config.debounce_ms);
-        assert_eq!(loaded.lfs_size_threshold_bytes, config.lfs_size_threshold_bytes);
+        assert_eq!(
+            loaded.lfs_size_threshold_bytes,
+            config.lfs_size_threshold_bytes
+        );
     }
 
     #[test]
@@ -151,10 +161,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config_path = dir.path().join("config.toml");
         // Minimal config — serde defaults should fill in the rest
-        std::fs::write(&config_path, r#"
+        std::fs::write(
+            &config_path,
+            r#"
             repo_path = "/tmp/test"
             remote_url = "git@github.com:user/repo.git"
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
 
         let loaded = Config::load(&config_path).unwrap();
         assert_eq!(loaded.branch, "main");

@@ -31,7 +31,9 @@ impl ConflictResolver {
         let statuses = self.git.status().await?;
         let unmerged: Vec<String> = statuses
             .iter()
-            .filter(|s| s.index == 'U' || s.worktree == 'U' || (s.index == 'A' && s.worktree == 'A'))
+            .filter(|s| {
+                s.index == 'U' || s.worktree == 'U' || (s.index == 'A' && s.worktree == 'A')
+            })
             .map(|s| s.path.clone())
             .collect();
 
