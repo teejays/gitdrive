@@ -71,15 +71,7 @@ impl GitCli {
         let statuses = out
             .stdout
             .lines()
-            .filter(|l| l.len() >= 3)
-            .map(|line| {
-                let bytes = line.as_bytes();
-                FileStatus {
-                    index: bytes[0] as char,
-                    worktree: bytes[1] as char,
-                    path: line[3..].to_string(),
-                }
-            })
+            .filter_map(Self::parse_status_line)
             .collect();
         Ok(statuses)
     }
@@ -334,5 +326,256 @@ impl GitCli {
             });
         }
         Ok(())
+    }
+
+    /// Parse porcelain status lines into FileStatus structs (extracted for testing).
+    pub(crate) fn parse_status_line(line: &str) -> Option<FileStatus> {
+        if line.len() < 3 {
+            return None;
+        }
+        let bytes = line.as_bytes();
+        Some(FileStatus {
+            index: bytes[0] as char,
+            worktree: bytes[1] as char,
+            path: line[3..].to_string(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── status parsing ──────────────────────────────────────────
+
+    #[test]
+    fn test_parse_status_modified() {
+        let s = GitCli::parse_status_line(" M src/main.rs").unwrap();
+        assert_eq!(s.index, ' ');
+        assert_eq!(s.worktree, 'M');
+        assert_eq!(s.path, "src/main.rs");
+    }
+
+    #[test]
+    fn test_parse_status_added() {
+        let s = GitCli::parse_status_line("A  new_file.txt").unwrap();
+        assert_eq!(s.index, 'A');
+        assert_eq!(s.worktree, ' ');
+        assert_eq!(s.path, "new_file.txt");
+    }
+
+    #[test]
+    fn test_parse_status_untracked() {
+        let s = GitCli::parse_status_line("?? untracked.txt").unwrap();
+        assert_eq!(s.index, '?');
+        assert_eq!(s.worktree, '?');
+        assert_eq!(s.path, "untracked.txt");
+    }
+
+    #[test]
+    fn test_parse_status_deleted() {
+        let s = GitCli::parse_status_line(" D removed.txt").unwrap();
+        assert_eq!(s.index, ' ');
+        assert_eq!(s.worktree, 'D');
+        assert_eq!(s.path, "removed.txt");
+    }
+
+    #[test]
+    fn test_parse_status_conflict() {
+        let s = GitCli::parse_status_line("UU conflicted.txt").unwrap();
+        assert_eq!(s.index, 'U');
+        assert_eq!(s.worktree, 'U');
+        assert_eq!(s.path, "conflicted.txt");
+    }
+
+    #[test]
+    fn test_parse_status_short_line() {
+        assert!(GitCli::parse_status_line("").is_none());
+        assert!(GitCli::parse_status_line("M").is_none());
+        assert!(GitCli::parse_status_line("MM").is_none());
+    }
+
+    #[test]
+    fn test_parse_status_path_with_spaces() {
+        let s = GitCli::parse_status_line(" M path with spaces/file name.txt").unwrap();
+        assert_eq!(s.path, "path with spaces/file name.txt");
+    }
+
+    // ── git operations (require real git) ───────────────────────
+
+    #[tokio::test]
+    async fn test_init_creates_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let git = GitCli::new(dir.path().to_path_buf());
+        git.init().await.unwrap();
+
+        assert!(dir.path().join(".git").exists());
+    }
+
+    #[tokio::test]
+    async fn test_status_empty_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let git = GitCli::new(dir.path().to_path_buf());
+        git.init().await.unwrap();
+
+        let status = git.status().await.unwrap();
+        assert!(status.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_status_with_new_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let git = GitCli::new(dir.path().to_path_buf());
+        git.init().await.unwrap();
+
+        std::fs::write(dir.path().join("test.txt"), "hello").unwrap();
+        let status = git.status().await.unwrap();
+        assert_eq!(status.len(), 1);
+        assert_eq!(status[0].index, '?');
+        assert_eq!(status[0].path, "test.txt");
+    }
+
+    #[tokio::test]
+    async fn test_add_and_commit() {
+        let dir = tempfile::tempdir().unwrap();
+        let git = GitCli::new(dir.path().to_path_buf());
+        git.init().await.unwrap();
+
+        std::fs::write(dir.path().join("test.txt"), "hello").unwrap();
+        git.add(&[&dir.path().join("test.txt")]).await.unwrap();
+        git.commit("test commit").await.unwrap();
+
+        let status = git.status().await.unwrap();
+        assert!(status.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_head_hash_returns_hash() {
+        let dir = tempfile::tempdir().unwrap();
+        let git = GitCli::new(dir.path().to_path_buf());
+        git.init().await.unwrap();
+
+        std::fs::write(dir.path().join("test.txt"), "hello").unwrap();
+        git.add_all().await.unwrap();
+        git.commit("first").await.unwrap();
+
+        let hash = git.head_hash().await.unwrap();
+        assert_eq!(hash.len(), 40); // full SHA-1
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[tokio::test]
+    async fn test_head_hash_fails_on_empty_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let git = GitCli::new(dir.path().to_path_buf());
+        git.init().await.unwrap();
+
+        assert!(git.head_hash().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_verify_succeeds_on_valid_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let git = GitCli::new(dir.path().to_path_buf());
+        git.init().await.unwrap();
+
+        git.verify().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_verify_fails_on_non_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let git = GitCli::new(dir.path().to_path_buf());
+
+        assert!(git.verify().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_add_remote() {
+        let dir = tempfile::tempdir().unwrap();
+        let git = GitCli::new(dir.path().to_path_buf());
+        git.init().await.unwrap();
+        git.add_remote("https://example.com/repo.git").await.unwrap();
+
+        let out = git.run(&["remote", "-v"]).await.unwrap();
+        assert!(out.stdout.contains("origin"));
+        assert!(out.stdout.contains("https://example.com/repo.git"));
+    }
+
+    #[tokio::test]
+    async fn test_add_empty_paths_is_noop() {
+        let dir = tempfile::tempdir().unwrap();
+        let git = GitCli::new(dir.path().to_path_buf());
+        git.init().await.unwrap();
+
+        // Should not error
+        git.add(&[]).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_diff_name_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let git = GitCli::new(dir.path().to_path_buf());
+        git.init().await.unwrap();
+
+        std::fs::write(dir.path().join("a.txt"), "1").unwrap();
+        git.add_all().await.unwrap();
+        git.commit("first").await.unwrap();
+        let hash1 = git.head_hash().await.unwrap();
+
+        std::fs::write(dir.path().join("b.txt"), "2").unwrap();
+        std::fs::write(dir.path().join("a.txt"), "changed").unwrap();
+        git.add_all().await.unwrap();
+        git.commit("second").await.unwrap();
+        let hash2 = git.head_hash().await.unwrap();
+
+        let changed = git.diff_name_only(&hash1, &hash2).await.unwrap();
+        assert!(changed.contains(&"a.txt".to_string()));
+        assert!(changed.contains(&"b.txt".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_check_ignore() {
+        let dir = tempfile::tempdir().unwrap();
+        let git = GitCli::new(dir.path().to_path_buf());
+        git.init().await.unwrap();
+
+        std::fs::write(dir.path().join(".gitignore"), "*.log\n").unwrap();
+        std::fs::write(dir.path().join("app.log"), "log data").unwrap();
+        std::fs::write(dir.path().join("app.txt"), "text data").unwrap();
+
+        let ignored = git.check_ignore(&[
+            dir.path().join("app.log"),
+            dir.path().join("app.txt"),
+        ]).await.unwrap();
+
+        let ignored_names: Vec<String> = ignored.iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        assert!(ignored_names.contains(&"app.log".to_string()));
+        assert!(!ignored_names.contains(&"app.txt".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_check_ignore_empty_input() {
+        let dir = tempfile::tempdir().unwrap();
+        let git = GitCli::new(dir.path().to_path_buf());
+        git.init().await.unwrap();
+
+        let result = git.check_ignore(&[]).await.unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_merge_base_no_upstream() {
+        let dir = tempfile::tempdir().unwrap();
+        let git = GitCli::new(dir.path().to_path_buf());
+        git.init().await.unwrap();
+        std::fs::write(dir.path().join("f.txt"), "x").unwrap();
+        git.add_all().await.unwrap();
+        git.commit("c1").await.unwrap();
+
+        let div = git.merge_base_check().await.unwrap();
+        assert_eq!(div, Divergence::NoUpstream);
     }
 }

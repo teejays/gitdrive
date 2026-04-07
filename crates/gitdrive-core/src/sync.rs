@@ -193,7 +193,7 @@ impl SyncEngine {
             return Ok(());
         }
 
-        let counts: Vec<&str> = out.stdout.trim().split_whitespace().collect();
+        let counts: Vec<&str> = out.stdout.split_whitespace().collect();
         if counts.len() != 2 {
             return Ok(());
         }

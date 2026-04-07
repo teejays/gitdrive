@@ -105,3 +105,82 @@ impl Config {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_new_defaults() {
+        let config = Config::new("/tmp/test".into(), "git@github.com:user/repo.git".into(), "main".into());
+        assert_eq!(config.repo_path, PathBuf::from("/tmp/test"));
+        assert_eq!(config.remote_url, "git@github.com:user/repo.git");
+        assert_eq!(config.branch, "main");
+        assert_eq!(config.pull_interval_secs, 20);
+        assert_eq!(config.debounce_ms, 100);
+        assert_eq!(config.lfs_size_threshold_bytes, 10 * 1024 * 1024);
+        assert!(config.sparse_paths.is_none());
+        assert!(!config.machine_id.is_empty());
+    }
+
+    #[test]
+    fn test_config_save_and_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("config.toml");
+
+        let config = Config::new("/tmp/test".into(), "git@github.com:user/repo.git".into(), "main".into());
+        config.save(&config_path).unwrap();
+
+        let loaded = Config::load(&config_path).unwrap();
+        assert_eq!(loaded.repo_path, config.repo_path);
+        assert_eq!(loaded.remote_url, config.remote_url);
+        assert_eq!(loaded.branch, config.branch);
+        assert_eq!(loaded.pull_interval_secs, config.pull_interval_secs);
+        assert_eq!(loaded.debounce_ms, config.debounce_ms);
+        assert_eq!(loaded.lfs_size_threshold_bytes, config.lfs_size_threshold_bytes);
+    }
+
+    #[test]
+    fn test_config_load_missing_file() {
+        let result = Config::load(Path::new("/nonexistent/config.toml"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_config_load_with_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("config.toml");
+        // Minimal config — serde defaults should fill in the rest
+        std::fs::write(&config_path, r#"
+            repo_path = "/tmp/test"
+            remote_url = "git@github.com:user/repo.git"
+        "#).unwrap();
+
+        let loaded = Config::load(&config_path).unwrap();
+        assert_eq!(loaded.branch, "main");
+        assert_eq!(loaded.pull_interval_secs, 20);
+        assert_eq!(loaded.debounce_ms, 100);
+        assert_eq!(loaded.lfs_size_threshold_bytes, 10 * 1024 * 1024);
+    }
+
+    #[test]
+    fn test_config_save_creates_parent_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("nested").join("deep").join("config.toml");
+
+        let config = Config::new("/tmp/test".into(), "url".into(), "main".into());
+        config.save(&config_path).unwrap();
+
+        assert!(config_path.exists());
+    }
+
+    #[test]
+    fn test_config_load_invalid_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("config.toml");
+        std::fs::write(&config_path, "this is not valid toml {{{{").unwrap();
+
+        let result = Config::load(&config_path);
+        assert!(result.is_err());
+    }
+}

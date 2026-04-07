@@ -33,8 +33,11 @@ impl FileWatcher {
 
         watcher.watch(watch_path, RecursiveMode::Recursive)?;
 
-        // Pre-compute the .git directory path to avoid per-path allocation
-        let git_dir = watch_path.join(".git");
+        // Pre-compute the .git directory path. Canonicalize to handle symlinks
+        // (e.g. /tmp -> /private/tmp on macOS) so starts_with() matches correctly.
+        let git_dir = watch_path.join(".git")
+            .canonicalize()
+            .unwrap_or_else(|_| watch_path.join(".git"));
 
         tokio::spawn(async move {
             let debounce = tokio::time::Duration::from_millis(debounce_ms);
@@ -95,5 +98,123 @@ impl FileWatcher {
 fn collect_paths(event: &Event, set: &mut HashSet<PathBuf>) {
     for path in &event.paths {
         set.insert(path.clone());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn is_git_internal(path: &Path, git_dir: &Path) -> bool {
+        path.starts_with(git_dir)
+    }
+
+    #[test]
+    fn test_collect_paths_deduplicates() {
+        let event = Event {
+            kind: notify::EventKind::Modify(notify::event::ModifyKind::Data(
+                notify::event::DataChange::Content,
+            )),
+            paths: vec![PathBuf::from("/a/b.txt"), PathBuf::from("/a/b.txt")],
+            attrs: Default::default(),
+        };
+        let mut set = HashSet::new();
+        collect_paths(&event, &mut set);
+        assert_eq!(set.len(), 1);
+    }
+
+    #[test]
+    fn test_collect_paths_multiple() {
+        let event = Event {
+            kind: notify::EventKind::Create(notify::event::CreateKind::File),
+            paths: vec![
+                PathBuf::from("/a/1.txt"),
+                PathBuf::from("/a/2.txt"),
+                PathBuf::from("/a/3.txt"),
+            ],
+            attrs: Default::default(),
+        };
+        let mut set = HashSet::new();
+        collect_paths(&event, &mut set);
+        assert_eq!(set.len(), 3);
+    }
+
+    #[test]
+    fn test_is_git_internal() {
+        let git_dir = PathBuf::from("/repo/.git");
+        assert!(is_git_internal(Path::new("/repo/.git/index"), &git_dir));
+        assert!(is_git_internal(Path::new("/repo/.git/objects/abc"), &git_dir));
+        assert!(!is_git_internal(Path::new("/repo/src/main.rs"), &git_dir));
+        assert!(!is_git_internal(Path::new("/repo/.gitignore"), &git_dir));
+    }
+
+    #[tokio::test]
+    async fn test_watcher_detects_file_creation() {
+        let dir = tempfile::tempdir().unwrap();
+        let git_dir = dir.path().to_path_buf();
+
+        // Need a git repo for check-ignore to work
+        let git = crate::git::GitCli::new(git_dir.clone());
+        git.init().await.unwrap();
+
+        let mut watcher = FileWatcher::new(dir.path(), 50, git).unwrap();
+
+        // Create a file
+        std::fs::write(dir.path().join("test.txt"), "hello").unwrap();
+
+        let batch = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            watcher.next_batch(),
+        )
+        .await
+        .expect("timeout waiting for watcher")
+        .expect("watcher closed");
+
+        let names: Vec<String> = batch
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        assert!(names.contains(&"test.txt".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_watcher_filters_git_internal() {
+        let dir = tempfile::tempdir().unwrap();
+        let git = crate::git::GitCli::new(dir.path().to_path_buf());
+        git.init().await.unwrap();
+
+        let mut watcher = FileWatcher::new(dir.path(), 50, git).unwrap();
+
+        // Write to .git/ and to a regular file simultaneously
+        std::fs::write(dir.path().join(".git").join("test_internal"), "x").unwrap();
+        std::fs::write(dir.path().join("visible.txt"), "y").unwrap();
+
+        // Collect all batches within a window — the .git write and visible write
+        // may arrive in separate batches
+        let mut all_paths = Vec::new();
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            match tokio::time::timeout_at(deadline, watcher.next_batch()).await {
+                Ok(Some(batch)) => {
+                    all_paths.extend(batch);
+                    // Give a short window for any more batches
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                }
+                _ => break,
+            }
+            if all_paths.iter().any(|p| {
+                p.file_name().map(|f| f == "visible.txt").unwrap_or(false)
+            }) {
+                break;
+            }
+        }
+
+        let names: Vec<String> = all_paths
+            .iter()
+            .filter_map(|p| p.file_name().map(|f| f.to_string_lossy().to_string()))
+            .collect();
+        assert!(names.contains(&"visible.txt".to_string()));
+        // .git internal paths should be filtered out
+        assert!(!names.contains(&"test_internal".to_string()));
     }
 }
