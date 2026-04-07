@@ -1,5 +1,8 @@
 # gitdrive
 
+[![CI](https://github.com/teejays/gitdrive/actions/workflows/ci.yml/badge.svg)](https://github.com/teejays/gitdrive/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/teejays/gitdrive)](https://github.com/teejays/gitdrive/releases)
+
 Dropbox-like file sync backed by Git + Git LFS. Watches a local folder, auto-commits changes, and syncs to a GitHub repo — giving you cloud sync with full version history.
 
 ## Install

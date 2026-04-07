@@ -27,26 +27,38 @@ Cargo workspace with two crates:
 - **Standardized paths**: local folder is always `~/gitdrive/`, remote is always `github.com/<user>/gitdrive`.
 - **`SyncEngine::new()` returns `Result`** because it canonicalizes the repo path at construction time (once, not per-cycle).
 - **Conflict resolution via channels**: `SyncEngine` sends `ConflictEvent` out, receives `ConflictResolution` back. The CLI uses stdin/stderr; a future Tauri UI would use notifications.
+- **`GIT_EDITOR=true` for all git ops**: gitdrive runs unattended, so we set `GIT_EDITOR` and `GIT_SEQUENCE_EDITOR` to `true` (no-op) on every git invocation. This prevents `rebase --continue`, merge commits, or anything else from blocking on an editor that doesn't exist.
 
 ## Building & Testing
 
 ```bash
 cargo build                    # build both crates
-cargo test                     # run unit tests
+cargo test --all               # run all tests (37 unit + 20 integration)
+cargo clippy --all-targets -- -D warnings
+cargo fmt --all -- --check
 cargo run --bin gitdrive-cli   # run the CLI
 RUST_LOG=gitdrive=debug cargo run --bin gitdrive-cli -- watch  # verbose
 ```
 
+Integration tests live in `crates/gitdrive-core/tests/integration.rs` and exercise the full push/pull/conflict pipelines against real bare git repos in tempdirs.
+
+## CI
+
+`.github/workflows/ci.yml` runs on push to `main` and all PRs:
+
+- **Check & Lint**: `cargo fmt --check` + `cargo clippy -D warnings`
+- **Tests**: matrix on `ubuntu-latest` and `macos-latest`. Installs git-lfs, sets `init.defaultBranch=main`, runs `cargo test --all`.
+
 ## Releasing
 
-Tag a version to trigger the GitHub Actions release workflow:
+Tag a version to trigger `.github/workflows/release.yml`:
 
 ```bash
 git tag v0.1.0
 git push origin v0.1.0
 ```
 
-Builds macOS (arm64 + x86_64) and Linux (x86_64) binaries, attaches to a GitHub Release.
+Builds macOS (arm64 + x86_64) and Linux (x86_64) binaries, attaches them to a GitHub Release. Users install with the `install.sh` script which auto-detects platform and downloads the latest release.
 
 ## Style
 
