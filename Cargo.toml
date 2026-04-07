@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/gitdrive-core", "crates/gitdrive-cli"]
+resolver = "2"
